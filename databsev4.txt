@@ -1,0 +1,200 @@
+CREATE TABLE credential (
+    email_id VARCHAR(255) PRIMARY KEY,
+    password VARCHAR(60) NOT NULL DEFAULT 'P@ssw0rd',
+    role ENUM('student', 'teacher', 'admin') NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    password_changed TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE branch (
+    branch_id INT AUTO_INCREMENT PRIMARY KEY,
+    branch_name VARCHAR(255) NOT NULL,
+    course_duration INT NOT NULL
+);
+
+CREATE TABLE batch (
+    batch_id INT AUTO_INCREMENT PRIMARY KEY,
+    branch_id INT NOT NULL,
+    batch_of YEAR NOT NULL,
+    batch CHAR(2) NOT NULL,
+    UNIQUE(branch_id, batch_of, batch),
+    FOREIGN KEY (branch_id) REFERENCES branch(branch_id)
+);
+
+CREATE TABLE student (
+    student_id INT AUTO_INCREMENT PRIMARY KEY,
+    student_name VARCHAR(50) NOT NULL,
+    student_surname VARCHAR(50) NOT NULL,
+    student_email VARCHAR(255) NOT NULL UNIQUE,
+    batch_id INT NOT NULL,
+    FOREIGN KEY (student_email) REFERENCES credential(email_id),
+    FOREIGN KEY (batch_id) REFERENCES batch(batch_id)
+);
+
+CREATE TABLE teacher (
+    teacher_id INT AUTO_INCREMENT PRIMARY KEY,
+    teacher_name VARCHAR(50) NOT NULL,
+    teacher_surname VARCHAR(50) NOT NULL,
+    teacher_email VARCHAR(255) NOT NULL UNIQUE,
+    FOREIGN KEY (teacher_email) REFERENCES credential(email_id)
+);
+
+CREATE TABLE admin (
+    admin_id INT AUTO_INCREMENT PRIMARY KEY,
+    admin_name VARCHAR(50) NOT NULL,
+    admin_surname VARCHAR(50) NOT NULL,
+    admin_email VARCHAR(255) NOT NULL UNIQUE,
+    FOREIGN KEY (admin_email) REFERENCES credential(email_id)
+);
+
+CREATE TABLE class (
+    class_id INT AUTO_INCREMENT PRIMARY KEY,
+    batch_id INT NOT NULL,
+    year INT NOT NULL,
+    semester_type ENUM('S', 'A') NOT NULL,
+    UNIQUE (batch_id, year, semester_type),
+    FOREIGN KEY (batch_id) REFERENCES batch(batch_id)
+); 
+
+CREATE TABLE subject (
+    subject_code VARCHAR(10) NOT NULL PRIMARY KEY,
+    subject_name VARCHAR(255) NOT NULL
+);
+
+CREATE TABLE class_subjects (
+    class_id INT NOT NULL,
+    subject_code VARCHAR(10) NOT NULL,
+    teacher_id INT NOT NULL,
+    PRIMARY KEY (class_id, subject_code, teacher_id),
+    FOREIGN KEY (class_id) REFERENCES class(class_id),
+    FOREIGN KEY (subject_code) REFERENCES subjects(subject_code),
+    FOREIGN KEY (teacher_id) REFERENCES teacher(teacher_id)
+);
+
+CREATE TABLE timetable (
+    timetable_id INT AUTO_INCREMENT PRIMARY KEY,
+    subject_code VARCHAR(10) NOT NULL,
+    class_id INT NOT NULL,
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    room_number VARCHAR(4) NOT NULL,
+    day ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday') NOT NULL,
+    UNIQUE (subject_code, class_id, start_time, end_time, room_number, day),
+    FOREIGN KEY (subject_code) REFERENCES subjects(subject_code),
+    FOREIGN KEY (class_id) REFERENCES class(class_id)
+);
+
+CREATE TABLE attendance (
+    student_id INT NOT NULL,
+    timetable_id INT NOT NULL,
+    status TINYINT NOT NULL,
+    marked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    room_number VARCHAR(4) NOT NULL,
+    date DATE NOT NULL,
+    PRIMARY KEY (student_id, timetable_id, date),
+    FOREIGN KEY (student_id) REFERENCES student(student_id),
+    FOREIGN KEY (timetable_id) REFERENCES timetable(timetable_id)
+);
+
+CREATE TABLE holiday_list (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    date DATE NOT NULL,
+    holiday_name VARCHAR(50) NOT NULL
+);
+
+INSERT INTO holiday_list (date, holiday_name) VALUES
+    ('2024-01-15', '2nd day of Makar Sankranti'),
+    ('2024-01-26', 'Republic Day'),
+    ('2024-03-08', 'Maha Shivratri'),
+    ('2024-03-25', 'Dhuleti (2nd Day of Holi)'),
+    ('2024-03-29', 'Good Friday'),
+    ('2024-04-11', 'Ramzan Eid'),
+    ('2024-04-17', 'Shree Ram Navmi'),
+    ('2024-06-17', 'Bakrid / Eid al Adha'),
+    ('2024-07-17', 'Muharram'),
+    ('2024-08-15', 'Independence Day'),
+    ('2024-08-19', 'Rakshabandhan'),
+    ('2024-08-26', 'Janmastami'),
+    ('2024-10-02', 'Gandhi Jayanti'),
+    ('2024-10-12', 'Holiday'),
+    ('2024-10-31', 'Dusshera / Sardar Vallabhbhai Patel Jayanti'),
+    ('2024-11-01', 'Diwali Break - Day 1'),
+    ('2024-11-02', 'Diwali Break - Day 2'),
+    ('2024-11-03', 'Diwali Break - Day 3'),
+    ('2024-11-04', 'Diwali Break - Day 4'),
+    ('2024-11-05', 'Diwali Break - Day 5'),
+    ('2024-11-06', 'Diwali Break - Day 6'),
+    ('2024-11-15', 'Guru Nanak\'s Birthday'),
+    ('2024-12-25', 'Christmas');
+
+INSERT INTO class_subjects (class_id, subject_code, teacher_id) VALUES
+    (1, 'CS344', 1),
+    (1, 'CS347', 2),
+    (1, 'CS321', 3),
+    (1, 'CS330', 4),
+    (1, 'CS331', 4),
+    (1, 'CS236', 6),
+    (2, 'CS237', 6),
+    (2, 'CS238', 6),
+    (1, 'PRO501', 7),
+    (2, 'CS348', 7),
+    (1, 'CMP513', 8),
+    (1, 'CMP514', 8),
+    (2, 'CS312', 8),
+    (2, 'CS313', 8),
+    (2, 'CMP501', 9),
+    (2, 'CS310', 9),
+    (2, 'SS102', 10),
+    (2, 'CS307', 11),
+    (2, 'CS350', 12);
+
+INSERT INTO subjects (subject_code, subject_name) VALUES
+    ('CMP501', 'Operating System Laboratory'),
+    ('CMP513', 'Computer Graphics and Image Processing'),
+    ('CMP514', 'Computer Graphics and Image Processing Laboratory'),
+    ('CS236', 'Theory of Computation'),
+    ('CS237', 'Database Management Systems'),
+    ('CS238', 'Database Management Systems Laboratory'),
+    ('CS307', 'Computer Organization and Architecture'),
+    ('CS310', 'Operating System'),
+    ('CS312', 'Design and Analysis of Algorithms'),
+    ('CS313', 'Design and Analysis of Algorithms Laboratory'),
+    ('CS321', 'Information Security'),
+    ('CS330', 'Software Engineering'),
+    ('CS331', 'Software Engineering Laboratory'),
+    ('CS344', 'Mobile Application Development'),
+    ('CS347', 'Mobile Application Development Laboratory'),
+    ('CS348', 'Core Java Programming'),
+    ('CS350', 'Core Java Programming Laboratory'),
+    ('PRO501', 'Minor Project - I'),
+    ('SS102', 'Humanities and Social Sciences');
+
+INSERT INTO teacher (teacher_id, teacher_name, teacher_surname, teacher_email) VALUES
+    (1, 'Ashish', 'Jani', 'ashish.jani@nuv.ac.in'),
+    (2, 'Hitarth', 'Revakar', 'hitarth.revakar@nuv.ac.in'),
+    (3, 'Ninad', 'Bhavsar', 'ninad.bhavsar@nuv.ac.in'),
+    (4, 'Swati', 'Rai', 'swati.rai@nuv.ac.in'),
+    (5, 'Darshan', 'Parmar', 'darshan.parmar@nuv.ac.in'),
+    (6, 'Vaibhavi', 'Patel', 'vaibhavik@nuv.ac.in'),
+    (7, 'Jaideepsigh', 'Raulji', 'jaideep.raulji@nuv.ac.in'),
+    (8, 'Yogesh', 'Chaudhari', 'yogeshc@nuv.ac.in'),
+    (9, 'Gaurav', 'Gaharwar', 'gauravsinghg@nuv.ac.in'),
+    (10, 'Manisha', 'Banani', 'manishab@nuv.ac.in'),
+    (11, 'Prerna', 'Kadia', 'prerna.kadia@nuv.ac.in'),
+    (12, 'Samir', 'Pathan', 'samir.pathan@nuv.ac.in');
+
+INSERT INTO timetable (timetable_id, subject_code, class_id, start_time, end_time, room_number, day) VALUES
+    (1, 'CMP513', 1, '14:00:00', '17:00:00', 'A511', 'Thursday'),
+    (2, 'CMP513', 1, '14:00:00', '17:00:00', 'A511', 'Friday'),
+    (3, 'CS236', 1, '11:00:00', '12:00:00', 'A506', 'Monday'),
+    (5, 'CS236', 1, '11:00:00', '12:00:00', 'A506', 'Tuesday'),
+    (4, 'CS236', 1, '15:00:00', '16:00:00', 'A504', 'Monday'),
+    (7, 'CS321', 1, '10:00:00', '11:00:00', 'A506', 'Monday'),
+    (8, 'CS321', 1, '12:00:00', '13:00:00', 'A506', 'Friday'),
+    (9, 'CS330', 1, '14:00:00', '15:00:00', 'A506', 'Monday'),
+    (10, 'CS330', 1, '14:00:00', '15:00:00', 'A506', 'Tuesday'),
+    (11, 'CS330', 1, '16:00:00', '17:00:00', 'A502', 'Wednesday'),
+    (12, 'CS331', 1, '10:00:00', '12:00:00', 'A303', 'Wednesday'),
+    (13, 'CS344', 1, '12:00:00', '13:00:00', 'A506', 'Tuesday'),
+    (14, 'CS344', 1, '12:00:00', '13:00:00', 'A506', 'Thursday'),
+    (15, 'CS347', 1, '14:00:00', '16:00:00', 'A303', 'Wednesday');
