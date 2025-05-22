@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager, jwt_required
-import utils.Database as db_connection
+import utils.Databasev2 as db_connection
 from routes.authentication import authentication
 from routes.student import student
 from routes.teacher import teacher

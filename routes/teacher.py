@@ -1,8 +1,13 @@
-import base64
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import get_jwt_identity, jwt_required
+import numpy as np
 from utils.functions import convert_flutter_to_mysql_time
 import os
+from werkzeug.utils import secure_filename
+from utils.face_recognition import detect_face, get_embedding, load_embeddings, cosine_similarity
+
+EMBEDDING_FOLDER = 'face_embeddings'
+FACE_MATCH_THRESHOLD = 0.5
 
 teacher = Blueprint('teacher', __name__)
 
@@ -249,21 +254,108 @@ def get_session_stats():
 @teacher.route('/mark_attendance', methods=['POST'])
 @jwt_required()
 def mark_attendance():
-    data = request.get_json()
-    if not data or 'photo' not in data:
-        return jsonify({'error': 'No photo data provided'}), 400
+    if 'image' not in request.files:
+        return jsonify({'error': 'No image uploaded'}), 400
+
+    photo = request.files['image']
+    timetable_id = request.form.get('timetable_id')
+    date = request.form.get('date')
+
+    if not timetable_id or not date:
+        return jsonify({'error': 'Missing timetable_id or date'}), 400
+
+    db = current_app.config['DATABASE']
 
     try:
-        # Decode the base64 string and save the image
-        photo_base64 = data['photo']
-        filename = data.get('filename', 'photo.jpg')  # Use provided filename or default
+        # Step 1: Get room_number and class_id from timetable
+        query = "SELECT room_number, class_id FROM timetable WHERE timetable_id = %s"
+        result = db.execute_query(query, (timetable_id,))
+        if not result:
+            return jsonify({'error': 'Invalid timetable_id'}), 400
+
+        room_number, class_id = result[0]  # First row
+
+        # Step 2: Get batch_id from class
+        query = "SELECT batch_id FROM class WHERE class_id = %s"
+        result = db.execute_query(query, (class_id,))
+        if not result:
+            return jsonify({'error': 'Invalid class_id'}), 400
+
+        batch_id = result[0][0]
+
+        # Step 3: Get all student_ids from student table for the batch
+        query = "SELECT student_id FROM student WHERE batch_id = %s"
+        student_rows = db.execute_query(query, (batch_id,))
+        valid_student_ids = {str(row[0]) for row in student_rows}  # as strings for matching
+
+        if not valid_student_ids:
+            return jsonify({'error': 'No students found in batch'}), 400
+
+        # Step 4: Save image
+        filename = secure_filename(photo.filename)
+        os.makedirs("photos", exist_ok=True)
         file_path = os.path.join("photos", filename)
+        photo.save(file_path)
 
-        os.makedirs("photos", exist_ok=True)  # Ensure directory exists
-        with open(file_path, "wb") as photo_file:
-            photo_file.write(base64.b64decode(photo_base64))
+        # Step 5: Detect faces
+        faces = detect_face(file_path)
+        if faces is None or len(faces) == 0:
+            return jsonify({'error': 'No faces detected'}), 400
+
+
+        # Step 6: Load only relevant student embeddings
+        known_embeddings = load_embeddings(EMBEDDING_FOLDER, valid_student_ids)
+
+        if not known_embeddings:
+            return jsonify({'error': 'No embeddings found for students in this batch'}), 400
+
+        # Step 7: Match faces
+        matched_students = []
+        for face_img, _ in faces:
+            embedding = get_embedding(face_img)
+            if embedding is None:
+                continue
+            embedding = embedding / np.linalg.norm(embedding)
+
+            best_match = None
+            best_score = 0
+
+            for student_id, stored_emb in known_embeddings.items():
+                score = cosine_similarity(embedding, stored_emb)
+                if score > best_score:
+                    best_score = score
+                    best_match = student_id
+
+            if best_score >= FACE_MATCH_THRESHOLD:
+                matched_students.append((int(best_match), best_score))
+
+        if not matched_students:
+            return jsonify({'error': 'No known students matched'}), 400
+
+        # Step 8: Batch insert attendance in one query
+        insert_query = """
+            INSERT INTO attendance (student_id, timetable_id, status, marked_at, room_number, date)
+            VALUES {}
+            ON DUPLICATE KEY UPDATE status = VALUES(status), marked_at = VALUES(marked_at)
+        """
+
+        values_placeholders = []
+        values_data = []
+        for student_id, score in matched_students:
+            values_placeholders.append("(%s, %s, %s, NOW(), %s, %s)")
+            values_data.extend([student_id, timetable_id, 1, room_number, date])
+
+        full_query = insert_query.format(", ".join(values_placeholders))
+
+        db.execute_query(full_query, tuple(values_data))
+
+        return jsonify({
+            'message': f'Attendance marked for {len(matched_students)} student(s)',
+            'students': [{'student_id': sid, 'match_score': float(score)} for sid, score in matched_students]
+        }), 200
+
     except Exception as e:
-        return jsonify({'error': f'Failed to decode image: {str(e)}'}), 500
+        print(e)
+        return jsonify({'error': f'Processing error: {str(e)}'}), 500
 
-    # Placeholder for additional processing (e.g., image recognition)
-    return jsonify({'message': 'Attendance marked successfully', 'file_path': file_path}), 200
+

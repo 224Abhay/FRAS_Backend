@@ -1,3 +1,7 @@
 /.venv__
 test.ipynb
 databsev4.txt
+face_embeddings/
+models/
+photos/
+annotated_test_image.jpg

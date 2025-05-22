@@ -1,6 +1,13 @@
+import io
+import os
+from PIL import Image
 from flask import Blueprint, request, jsonify, current_app
-from flask_jwt_extended import jwt_required
-from utils.functions import get_weekday_name, convert_flutter_to_mysql_time
+from flask_jwt_extended import get_jwt_identity, jwt_required
+import numpy as np
+from utils.functions import convert_flutter_to_mysql_time
+from utils.face_recognition import detect_face, get_embedding
+
+EMBEDDING_FOLDER = 'face_embeddings'
 
 student = Blueprint('student', __name__)
 
@@ -79,7 +86,7 @@ def get_schedule():
 @jwt_required()
 def get_attendance():
     data = request.get_json()
-    student_id = data.get('student_id')
+    student_id = get_jwt_identity()['id']
     timetable_ids = data.get('timetable_ids')
     date = data.get('date')
 
@@ -133,7 +140,7 @@ def get_attendance():
 @jwt_required()
 def get_subject_stats():
     class_id = request.args.get('class_id')
-    student_id = request.args.get('student_id')
+    student_id = get_jwt_identity()['id']
 
     query = """
         SELECT class_subjects.subject_code, s.subject_name
@@ -161,7 +168,7 @@ def get_subject_stats():
                 WHERE attendance.student_id = %s
                 AND timetable.subject_code = %s
             """
-            attendance_result = current_app.config['DATABASE'].execute_query(attendance_query, (int(student_id), subject_code))
+            attendance_result = current_app.config['DATABASE'].execute_query(attendance_query, (student_id, subject_code))
 
             attended_classes = attendance_result[0][0] if attendance_result else 0
             total_classes = attendance_result[0][1] if attendance_result else 0
@@ -180,7 +187,7 @@ def get_subject_stats():
 @jwt_required()
 def get_attendance_stats():
     subject_code = request.args.get('subject_code')
-    student_id = request.args.get('student_id')
+    student_id = get_jwt_identity()['id']
 
     query = """
         SELECT 
@@ -216,3 +223,32 @@ def get_attendance_stats():
             })
     
     return jsonify(attendance_stats), 200
+
+@student.route('/update_facedata', methods=['POST'])
+@jwt_required()
+def upload_face():
+    user_id = get_jwt_identity()['id']
+    file = request.files.get('image')
+
+    if not file:
+        return jsonify({"success": False, "message": "No image uploaded"}), 400
+
+    try:
+        image_stream = io.BytesIO(file.read())
+        pil_image = Image.open(image_stream).convert("RGB")
+        img_np = np.array(pil_image)
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Invalid image data: {e}"}), 400
+
+    face_img = detect_face(img_np, max_det=1)
+    if face_img is None:
+        return jsonify({"success": False, "roll_number": user_id, "message": "Face not detected"}), 200
+
+    embedding = get_embedding(face_img)
+    if embedding is None:
+        return jsonify({"success": False, "roll_number": user_id, "message": "Embedding failed"}), 200
+
+    embedding_file = os.path.join(EMBEDDING_FOLDER, f"{user_id}.npy")
+    np.save(embedding_file, embedding)
+
+    return jsonify({"success": True, "roll_number": user_id}), 200
